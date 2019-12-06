@@ -4,7 +4,7 @@ import sys
 from datetime import datetime, time
 import sqlparse
 import operator
-
+import shlex
 import re
 import pdb
 
@@ -1885,7 +1885,7 @@ def merge_children(pages, page_num, child_page_num, left=True):
         else:
             child_page['left_child_page'] = lsib['left_child_page']
 
-        ldelete_page_in_dictionary(pages, lsib['page_number'])
+        delete_page_in_dictionary(pages, lsib['page_number'])
         return id2del
 
     else:
@@ -2053,18 +2053,6 @@ def get_predecessor(pages, page_num):
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
 #############################################################################
 #TO DO
 
@@ -2088,8 +2076,6 @@ def check_values_match_schema(values,schema):
 
 #########################################################################
 # DDL FUNCTION
-
-
 
 
 def extract_definitions(token_list):
@@ -2161,11 +2147,59 @@ def parse_create_table(SQL):
 
     d = {}
     d[table_name] = {}
+    c = 1
     for col, definition in zip(col_list, definition_list):
-        d[table_name][col] = definition
-
+        isnull = 'YES'
+        isunique = 'NO'
+        isprimary = 'NO'
+        try:
+            k = definition.split()[2]
+            if k == 'not':
+                isnull = 'NO'
+            elif k == 'unique':
+                isunique = 'YES'
+            elif k == 'primary':
+                isprimary = 'YES'
+                isunique = 'YES'
+                isnull = 'NO'
+        except:
+            pass
+        
+            
+        d[table_name][col] = {"data_type" : definition.split()[1],
+                              "ordinal_position" : c,
+                               'is_nullable':isnull,
+                                'unique':isunique,
+                                'primary_key':isprimary}
+        
     return d
 
+
+
+def parse_insert_into(command):
+#     print("{}".format(command))
+    query_match = "(?i)insert (?i)into\s+(.*?)\s*((?i)values\s(.*?)\s*)?;"
+    if re.match(query_match, command):
+        stmt = sqlparse.parse(command)[0]
+        table_name = str(stmt.tokens[4])
+        column_names = table_name[table_name.find("(")+1:table_name.find(")")]
+        column_list = [x.strip() for x in column_names.split(',')]
+        table_name = table_name.split()[0]
+        values = str(stmt.tokens[-2])
+        values = re.sub("\s", "", re.split(';',re.sub("(?i)values","",values))[0])
+        values = values[values.find("(")+1:values.find(")")]
+        values = shlex.shlex(values,posix=True)
+        values.whitespace += ','
+        values.whitespace_split = True
+        values = list(values)
+#         print(values,"\t",table_name,"\t", column_list)
+        d = {}
+        d[table_name] = {}
+        for col, value in zip(column_list, values):
+            d[table_name][col] = value
+        return d
+    else:
+        print("Enter correct query")
 
 def parse_drop_table(command):
     """
@@ -2183,9 +2217,9 @@ def parse_drop_table(command):
     if re.match(query_match, command):
         stmt = sqlparse.parse(command)[0]
         tablename = str(stmt.tokens[-2])
+        return tablename
     else:
         print("Enter correct query")
-    return tablename
 
 
 
